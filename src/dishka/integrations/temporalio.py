@@ -1,0 +1,59 @@
+"""TemporalIO integration with Dishka for dependency injection in activities."""
+
+import inspect
+from typing import Any, Callable
+
+from dishka import AsyncContainer, Scope
+from dishka.integrations.base import wrap_injection
+from temporalio.worker import Interceptor, ActivityInboundInterceptor, ExecuteActivityInput
+
+
+# noinspection PyShadowingBuiltins
+class DishkaWorkerInterceptor(Interceptor):
+    """Manages Dishka request scope for Temporal activities."""
+
+    def __init__(self, container: AsyncContainer):
+        """Initialize the interceptor with a Dishka container."""
+        self.container = container
+
+    def intercept_activity(self, next: ActivityInboundInterceptor) -> ActivityInboundInterceptor:
+        """Intercepts activity execution to manage Dishka request scope."""
+        return DishkaActivityInboundInterceptor(next, self.container)
+
+
+# noinspection PyShadowingBuiltins
+class DishkaActivityInboundInterceptor(ActivityInboundInterceptor):
+    """Injects Dishka dependencies into Temporal activities."""
+
+    def __init__(self, next: ActivityInboundInterceptor, container: AsyncContainer):
+        """Initialize the interceptor with a Dishka container."""
+        super().__init__(next)
+        self.container = container
+
+    async def execute_activity(self, input: ExecuteActivityInput) -> Any:
+        """Execute the activity with Dishka dependencies injected."""
+        is_async = inspect.iscoroutinefunction(input.fn)
+
+        async def _run_async_activity():
+            """Run the activity asynchronously for a default async activity."""
+            async with self.container(scope=Scope.REQUEST) as scoped_container:
+                input.fn = self._wrap(input.fn, scoped_container, is_async=True)
+                return await super(DishkaActivityInboundInterceptor, self).execute_activity(input)
+
+        async def _run_sync_activity():
+            """Run the activity synchronously with a request scope."""
+            with self.container(scope=Scope.REQUEST) as scoped_container:
+                input.fn = self._wrap(input.fn, scoped_container, is_async=False)
+                return await super(DishkaActivityInboundInterceptor, self).execute_activity(input)
+
+        return await _run_async_activity() if is_async else await _run_sync_activity()
+
+    @staticmethod
+    def _wrap(func: Callable, container: AsyncContainer, is_async: bool) -> Callable:
+        """Wrap the activity function to inject dependencies."""
+        return wrap_injection(
+            func=func,
+            container_getter=lambda args, kwargs: container,
+            remove_depends=True,
+            **({"is_async": True} if is_async else {})
+        )
