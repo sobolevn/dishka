@@ -1,18 +1,20 @@
 """TemporalIO integration with Dishka for dependency injection in activities."""
 
 import inspect
-from typing import Any, Callable
+from typing import Any, Callable, TypeVar, Union
 
-from dishka import AsyncContainer, Scope
+from dishka import AsyncContainer, Container, Scope
 from dishka.integrations.base import wrap_injection
 from temporalio.worker import Interceptor, ActivityInboundInterceptor, ExecuteActivityInput
+
+DishkaContainer = TypeVar("DishkaContainer", bound=Union[Container, AsyncContainer])
 
 
 # noinspection PyShadowingBuiltins
 class DishkaWorkerInterceptor(Interceptor):
     """Manages Dishka request scope for Temporal activities."""
 
-    def __init__(self, container: AsyncContainer):
+    def __init__(self, container: DishkaContainer):
         """Initialize the interceptor with a Dishka container."""
         self.container = container
 
@@ -25,7 +27,7 @@ class DishkaWorkerInterceptor(Interceptor):
 class DishkaActivityInboundInterceptor(ActivityInboundInterceptor):
     """Injects Dishka dependencies into Temporal activities."""
 
-    def __init__(self, next: ActivityInboundInterceptor, container: AsyncContainer):
+    def __init__(self, next: ActivityInboundInterceptor, container: DishkaContainer):
         """Initialize the interceptor with a Dishka container."""
         super().__init__(next)
         self.container = container
@@ -49,7 +51,7 @@ class DishkaActivityInboundInterceptor(ActivityInboundInterceptor):
         return await _run_async_activity() if is_async else await _run_sync_activity()
 
     @staticmethod
-    def _wrap(func: Callable, container: AsyncContainer, is_async: bool) -> Callable:
+    def _wrap(func: Callable, container: DishkaContainer, is_async: bool) -> Callable:
         """Wrap the activity function to inject dependencies."""
         return wrap_injection(
             func=func,
