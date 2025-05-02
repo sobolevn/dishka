@@ -35,13 +35,13 @@ class DishkaActivityInboundInterceptor(ActivityInboundInterceptor):
         is_async = inspect.iscoroutinefunction(input.fn)
 
         async def _run_async_activity():
-            """Run the activity asynchronously for a default async activity."""
+            """Run the default async activity."""
             async with self.container(scope=Scope.REQUEST) as scoped_container:
                 input.fn = self._wrap(input.fn, scoped_container, is_async=True)
                 return await super(DishkaActivityInboundInterceptor, self).execute_activity(input)
 
         async def _run_sync_activity():
-            """Run the activity synchronously with a request scope."""
+            """Run the sync activity used with ThreadPoolExecutor as activity_executor."""
             with self.container(scope=Scope.REQUEST) as scoped_container:
                 input.fn = self._wrap(input.fn, scoped_container, is_async=False)
                 return await super(DishkaActivityInboundInterceptor, self).execute_activity(input)
